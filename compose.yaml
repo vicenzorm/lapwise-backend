@@ -1,0 +1,11 @@
+services:
+  postgres:
+    image: 'postgres:17-alpine'
+    env_file:
+      - .env
+    environment:
+      POSTGRES_USER: ${DB_USERNAME:-lapwise}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-lapwise}
+      POSTGRES_DB: lapwise
+    ports:
+      - '5432:5432'

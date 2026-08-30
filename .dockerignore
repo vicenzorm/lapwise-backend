@@ -1,0 +1,12 @@
+target/
+.git
+.gitignore
+.env
+.env.*
+!.env.example
+.idea
+*.iml
+.vscode
+.DS_Store
+HELP.md
+compose.yaml
