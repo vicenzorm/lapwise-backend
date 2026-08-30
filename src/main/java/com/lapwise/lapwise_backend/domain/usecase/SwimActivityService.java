@@ -1,15 +1,22 @@
 package com.lapwise.lapwise_backend.domain.usecase;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+import com.lapwise.lapwise_backend.domain.SplitAnalytics;
 import com.lapwise.lapwise_backend.domain.exception.InvalidSwimCursorException;
 import com.lapwise.lapwise_backend.domain.exception.UserNotFoundException;
+import com.lapwise.lapwise_backend.domain.model.ActivityInsight;
+import com.lapwise.lapwise_backend.domain.model.ComparableSwim;
+import com.lapwise.lapwise_backend.domain.model.ComparisonSnapshot;
+import com.lapwise.lapwise_backend.domain.model.Split;
 import com.lapwise.lapwise_backend.domain.model.StravaActivitySummary;
 import com.lapwise.lapwise_backend.domain.model.StravaTokenSet;
 import com.lapwise.lapwise_backend.domain.model.SwimActivity;
+import com.lapwise.lapwise_backend.domain.model.SwimActivityDetail;
 import com.lapwise.lapwise_backend.domain.model.SwimActivityPage;
 import com.lapwise.lapwise_backend.domain.model.SyncResult;
 import com.lapwise.lapwise_backend.domain.model.User;
@@ -19,6 +26,8 @@ import com.lapwise.lapwise_backend.domain.port.in.SyncActivitiesUseCase;
 import com.lapwise.lapwise_backend.domain.port.in.command.GetSwimActivitiesCommand;
 import com.lapwise.lapwise_backend.domain.port.in.command.GetSwimActivityCommand;
 import com.lapwise.lapwise_backend.domain.port.in.command.SyncActivitiesCommand;
+import com.lapwise.lapwise_backend.domain.port.out.ActivityInsightRepositoryPort;
+import com.lapwise.lapwise_backend.domain.port.out.InsightPort;
 import com.lapwise.lapwise_backend.domain.port.out.StravaActivityPort;
 import com.lapwise.lapwise_backend.domain.port.out.StravaAuthPort;
 import com.lapwise.lapwise_backend.domain.port.out.SwimActivityRepositoryPort;
@@ -30,17 +39,23 @@ public class SwimActivityService implements SyncActivitiesUseCase, GetSwimActivi
     private final StravaAuthPort stravaAuthPort;
     private final StravaActivityPort stravaActivityPort;
     private final SwimActivityRepositoryPort swimActivityRepositoryPort;
+    private final ActivityInsightRepositoryPort activityInsightRepositoryPort;
+    private final InsightPort insightPort;
 
     public SwimActivityService(
         UserRepositoryPort userRepositoryPort,
         StravaAuthPort stravaAuthPort, 
         StravaActivityPort stravaActivityPort, 
-        SwimActivityRepositoryPort swimActivityRepositoryPort
+        SwimActivityRepositoryPort swimActivityRepositoryPort,
+        ActivityInsightRepositoryPort activityInsightRepositoryPort,
+        InsightPort insightPort
     ) {
         this.userRepositoryPort = userRepositoryPort;
         this.stravaAuthPort = stravaAuthPort;
         this.stravaActivityPort = stravaActivityPort;
         this.swimActivityRepositoryPort = swimActivityRepositoryPort;
+        this.activityInsightRepositoryPort = activityInsightRepositoryPort;
+        this.insightPort = insightPort;
     }
 
     @Override
@@ -48,24 +63,31 @@ public class SwimActivityService implements SyncActivitiesUseCase, GetSwimActivi
         User user = userRepositoryPort.findById(command.userId())
             .orElseThrow(UserNotFoundException::new);
         user = withFreshStravaTokens(user);
+        
         List<StravaActivitySummary> summaries = stravaActivityPort.listAthleteActivities(user.accessToken(), user.lastSyncedAt());
         int imported = 0;
         int skipped = 0;
-        for(StravaActivitySummary summary : summaries) {
-            if (swimActivityRepositoryPort.existsByUserIdAndStravaActivityId(user.id(), summary.stravaActivityId())) {
+
+        for(int i = summaries.size() - 1; i >= 0; i--) {
+            StravaActivitySummary summary = summaries.get(i);
+            if (swimActivityRepositoryPort.existsByUserIdAndStravaActivityId(user.id(),summary.stravaActivityId())) {
                 skipped++;
-            } else {
-                swimActivityRepositoryPort.save(SwimActivity.createNew(
-                    user.id(), 
-                    summary.stravaActivityId(), 
-                    summary.startedAt(), 
-                    summary.durationSeconds(), 
-                    summary.distanceMeters(), 
-                    summary.poolLengthMeters(), 
-                    null
-                ));
-                imported++;
+                continue;
             }
+            List<Split> splits = stravaActivityPort.getActivitySplits(
+                user.accessToken(),
+                summary.stravaActivityId()
+            );
+            swimActivityRepositoryPort.save(SwimActivity.createNew(
+                user.id(),
+                summary.stravaActivityId(),
+                summary.startedAt(),
+                summary.durationSeconds(),
+                summary.distanceMeters(),
+                summary.poolLengthMeters(),
+                splits.isEmpty() ? null : splits
+            ));
+            imported++;
         }
         User newUser = new User(
             user.id(), 
@@ -77,6 +99,7 @@ public class SwimActivityService implements SyncActivitiesUseCase, GetSwimActivi
             Instant.now()
         );
         userRepositoryPort.save(newUser);
+        backfillInsights(user.id());
         return new SyncResult(imported, skipped);
     }   
 
@@ -106,8 +129,37 @@ public class SwimActivityService implements SyncActivitiesUseCase, GetSwimActivi
     }
 
     @Override
-    public Optional<SwimActivity> getSwimActivity(GetSwimActivityCommand command) {
-        return swimActivityRepositoryPort.findSwimActivityByIdAndUserId(command.id(), command.userId());
+    public Optional<SwimActivityDetail> getSwimActivity(GetSwimActivityCommand command) {
+        return swimActivityRepositoryPort
+            .findSwimActivityByIdAndUserId(command.id(), command.userId())
+            .map(activity -> new SwimActivityDetail(
+                activity,
+                activityInsightRepositoryPort.findActivityInsightBySwimActivityId(activity.id()).orElse(null)
+            ));
+    }
+
+    private void backfillInsights(UUID userId) {
+        List<SwimActivity> swims = swimActivityRepositoryPort.findByUserIdOrderByStartedAtAsc(userId);
+        List<SwimActivity> earlier = new ArrayList<>();
+        for (SwimActivity swim : swims) {
+            if (SplitAnalytics.isUsable(swim.splits())
+                && activityInsightRepositoryPort.findActivityInsightBySwimActivityId(swim.id()).isEmpty()) {
+                List<SwimActivity> comparableSwims = SplitAnalytics.selectComparables(swim, earlier);
+                List<ComparableSwim> comparables = new ArrayList<>();
+                for (SwimActivity candidate : comparableSwims) {
+                    if (!SplitAnalytics.isUsable(candidate.splits())) {
+                        continue;
+                    }
+                    comparables.add(SplitAnalytics.toComparable(candidate, candidate.splits()));
+                }
+                ComparisonSnapshot snapshot = SplitAnalytics.snapshot(swim, swim.splits(), comparables);
+                String body = insightPort.generate(snapshot, swim.splits());
+                if (body != null && !body.isBlank()) {
+                    activityInsightRepositoryPort.save(ActivityInsight.createNew(swim.id(), body));
+                }
+            }
+            earlier.add(swim);
+        }
     }
 
     private User withFreshStravaTokens(User user) {

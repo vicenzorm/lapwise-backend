@@ -29,7 +29,7 @@ There is no `application` package. That split (Hombergs / “Java hexagonal”) 
 - Inbound ports *are* the use case interfaces (`domain.port.in`). Implementations live in `domain.usecase`. Commands live in `domain.port.in.command`. Do not nest a `useCases` folder under `port.in`.
 - A use case takes ports in its constructor. It does not import `org.springframework.web`, `jakarta.persistence`, or RestClient.
 - Controllers translate HTTP ↔ use case input/output. Status codes, `429` mapping, and JSON request/response types stay in the inbound adapter: DTOs in `adapter.in.dtos` (`@Schema` for Swagger), HTTP exceptions and `@RestControllerAdvice` in `adapter.in.exception`. Controllers stay in `adapter.in.web`. No `controllers` subpackage.
-- Failures the domain named (incomplete Strava token, later missing splits) are types in `domain.exception`. Do not invent exception types for features that do not exist yet.
+- Failures the domain named (incomplete Strava token, insight rate-limited or unavailable) are types in `domain.exception`. Missing splits are not an exception: skip the insight row.
 - Strava, the AI API, and the database are each one outbound adapter behind a port the domain named.
 
 Place every new type under `domain`, `adapter.in`, `adapter.out`, or `config`. `config` is only composition-root Spring beans (OpenAPI, Security filter chain, loading `.env` into the environment). A type that belongs to two layers is in the wrong layer.
@@ -64,7 +64,7 @@ Glossary: [`CONTEXT.md`](CONTEXT.md). Tables: [`docs/data-model.md`](docs/data-m
 | `SwimActivity` | id, userId, stravaActivityId, date, duration, distance, pool (if present), rawSplitsJson |
 | `ActivityInsight` | id, activityId, generated text, createdAt |
 
-`rawSplitsJson` is the prompt raw material. Not every Strava activity has splits.
+`rawSplitsJson` is the persisted Split list. Domain fade math uses parsed `Split` values. The OpenRouter prompt gets this swim’s splits plus a `ComparisonSnapshot` (Java-computed numbers for comparable recent swims), not a dump of prior swims’ JSON. Not every Strava activity has usable splits (need at least three).
 
 ## HTTP contract
 
@@ -77,28 +77,31 @@ Strava access/refresh is a server problem. The iOS app holds a session token for
 
 ### Sync
 
-- `POST /sync` — pull new swim activities since last sync, persist `SwimActivity`, generate `ActivityInsight` when that phase is in. Synchronous; 1–3s is acceptable. No SSE, webhook, or queue in the MVP.
+- `POST /sync` — pull new swim activities since last sync, persist `SwimActivity` (with splits from Strava activity detail), then generate `ActivityInsight` for swims that have usable splits and no insight yet. Blocking; several new swims can take longer than 1–3s (one Strava detail call + one OpenRouter call each). No SSE, webhook, or queue in the MVP.
 
 ### Query
 
 - `GET /swim-activities?cursor=&limit=` — cursor pagination
-- `GET /swim-activities/{id}` — detail with splits and insight
+- `GET /swim-activities/{id}` — detail with splits and insight (`insight` is null when none was generated)
 
 ### Errors the client is built to handle
 
 | Status | Meaning |
 |---|---|
 | `401` | Session token expired |
-| `429` | Strava rate limit — map to a clear message, do not leak the upstream body |
-| `422` | Unexpected or incomplete Strava payload (missing splits is the usual case) |
-| `502` / `503` | Strava down or unstable |
+| `429` | Rate limit — `strava_rate_limited` or `insight_rate_limited`; map to a clear message, do not leak the upstream body |
+| `422` | Unexpected or incomplete Strava payload (e.g. incomplete token). Missing splits skip insight; they do not 422 the sync |
+| `502` / `503` | Strava down, or OpenRouter down (`insight_unavailable`) |
 
 ## Sync flow
 
+Design: [`docs/superpowers/specs/2026-08-30-activity-insight-design.md`](docs/superpowers/specs/2026-08-30-activity-insight-design.md).
+
 1. Client `POST /sync`
 2. Call Strava `GET /athlete/activities`, swim-only, using the user's Strava token (refresh first if expired)
-3. For each new activity: persist, then (once the AI phase is in) a short prompt from available splits on the cheapest model, no long history
-4. Persist `ActivityInsight`; return the full result so the client can refresh the list
+3. For each new activity, oldest first: `GET /api/v3/activities/{id}` for splits, persist `SwimActivity`. Then set `lastSyncedAt`
+4. For this user's swims that have usable splits and no insight yet, oldest first: build a comparison snapshot (this swim’s fade + up to 5 comparables within ±20% distance), call OpenRouter via `InsightPort`, persist `ActivityInsight`. Missing splits skip insight. An OpenRouter failure leaves remaining swims for the next sync
+5. Return imported/skipped counts so the client can refresh the list
 
 ## Backend phases
 
@@ -106,7 +109,7 @@ Strava access/refresh is a server problem. The iOS app holds a session token for
 2. Authorize, callback, refresh — this is the new muscle
 3. `POST /sync` with real swims, persist only
 4. *(iOS — not this repo)*
-5. Insight generation inside `/sync`
+5. Insight generation inside `/sync` (OpenRouter narrator + comparison snapshot — [design](docs/superpowers/specs/2026-08-30-activity-insight-design.md))
 6. *(iOS — not this repo)*
 7. Optional later: SSE on the sync button
 

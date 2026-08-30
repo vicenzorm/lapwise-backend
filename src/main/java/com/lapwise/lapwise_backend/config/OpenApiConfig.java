@@ -49,13 +49,18 @@ public class OpenApiConfig {
                     ## Errors
 
                     JSON errors use `{ "error": "<stable code>", "message": "<safe text>" }`. \
-                    Upstream Strava bodies are never forwarded. Planned codes the client should \
-                    handle: `401` session, `429` Strava rate limit (once `/sync` exists), \
-                    `422` incomplete Strava payload, `502`/`503` Strava down.
+                    Upstream Strava or OpenRouter bodies are never forwarded. Codes the client should \
+                    handle: `401` session, `429` `strava_rate_limited` or `insight_rate_limited`, \
+                    `422` unusable Strava payload (missing splits skip insight; they do not 422 `/sync`), \
+                    `502`/`503` Strava down or `insight_unavailable`.
 
-                    ## What is not in this document yet
+                    ## Insight (phase 5)
 
-                    Insight is phase 5.
+                    Java computes fade and comparable-swim numbers (`ComparisonSnapshot`). \
+                    OpenRouter only narrates, via `POST /sync` backfill — not on `GET`. \
+                    `GET /swim-activities/{id}` returns `splits` and `insight` (`null` when no row). \
+                    List never includes either. \
+                    Missing usable splits skip the insight row; they do not `422` `/sync`.
                     """))
             .addSecurityItem(new SecurityRequirement().addList("bearer-jwt"))
             .servers(List.of(
@@ -67,10 +72,10 @@ public class OpenApiConfig {
                     .description("Strava authorization-code OAuth. Issues the Lapwise session JWT. Public; no Bearer header."),
                 new Tag()
                     .name("Sync")
-                    .description("On-demand pull of swim activities from Strava. Requires Bearer JWT. No insight."),
+                    .description("On-demand pull of swim activities from Strava, including activity-detail laps, then insight backfill. Requires Bearer JWT."),
                 new Tag()
                     .name("Swim Activities")
-                    .description("List and detail of swims already stored for the JWT user. Does not call Strava.")
+                    .description("List and detail of swims already stored for the JWT user. Does not call Strava. List has no splits or insight. Detail includes splits; insight is null when none was generated.")
             ))
             .components(new Components()
                 .addSecuritySchemes("bearer-jwt", new SecurityScheme()

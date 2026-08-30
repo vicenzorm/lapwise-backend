@@ -30,4 +30,6 @@ public interface SpringDataSwimActivityRepository extends JpaRepository<SwimActi
     );
 
     Optional<SwimActivityEntity> findByIdAndUser_Id(UUID id, UUID userId);
+
+    List<SwimActivityEntity> findByUser_IdOrderByStartedAtAscIdAsc(UUID userId);
 }

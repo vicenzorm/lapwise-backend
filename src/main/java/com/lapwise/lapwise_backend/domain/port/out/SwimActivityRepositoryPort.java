@@ -12,4 +12,5 @@ public interface SwimActivityRepositoryPort {
     boolean existsByUserIdAndStravaActivityId(UUID userId, Long stravaActivityId);
     Optional<SwimActivity> findSwimActivityByIdAndUserId(UUID id, UUID userId);
     List<SwimActivity> findPage(UUID userId, Instant cursorStartedAt, UUID cursorId, int limit);
+    List<SwimActivity> findByUserIdOrderByStartedAtAsc(UUID userId);
 }

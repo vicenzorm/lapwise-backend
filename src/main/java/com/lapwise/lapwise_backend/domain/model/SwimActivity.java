@@ -1,6 +1,7 @@
 package com.lapwise.lapwise_backend.domain.model;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 public record SwimActivity(
@@ -11,7 +12,7 @@ public record SwimActivity(
     int durationSeconds,
     double distanceMeters,
     Double poolLengthMeters, 
-    String rawSplitsJson
+    List<Split> splits
 ) {
     public static SwimActivity createNew(
         UUID userId,
@@ -19,8 +20,8 @@ public record SwimActivity(
         Instant startedAt,
         int durationSeconds,
         double distanceMeters,
-        Double poolLengthMeters, 
-        String rawSplitsJson
+        Double poolLengthMeters,
+        List<Split> splits
     ) {
         return new SwimActivity(
             null,
@@ -30,7 +31,7 @@ public record SwimActivity(
             durationSeconds,
             distanceMeters, 
             poolLengthMeters, 
-            rawSplitsJson
+            splits
         );
     }
 }

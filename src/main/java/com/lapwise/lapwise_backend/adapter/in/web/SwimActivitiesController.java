@@ -1,5 +1,6 @@
 package com.lapwise.lapwise_backend.adapter.in.web;
 
+import java.util.List;
 import java.util.UUID;
 
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -9,11 +10,17 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.lapwise.lapwise_backend.adapter.in.dtos.ActivityInsightResponse;
 import com.lapwise.lapwise_backend.adapter.in.dtos.AuthErrorResponse;
+import com.lapwise.lapwise_backend.adapter.in.dtos.SplitResponse;
+import com.lapwise.lapwise_backend.adapter.in.dtos.SwimActivityDetailResponse;
 import com.lapwise.lapwise_backend.adapter.in.dtos.SwimActivityPageResponse;
 import com.lapwise.lapwise_backend.adapter.in.dtos.SwimActivityResponse;
 import com.lapwise.lapwise_backend.adapter.in.exception.SwimActivityNotFoundException;
+import com.lapwise.lapwise_backend.domain.model.ActivityInsight;
+import com.lapwise.lapwise_backend.domain.model.Split;
 import com.lapwise.lapwise_backend.domain.model.SwimActivity;
+import com.lapwise.lapwise_backend.domain.model.SwimActivityDetail;
 import com.lapwise.lapwise_backend.domain.model.SwimActivityPage;
 import com.lapwise.lapwise_backend.domain.port.in.GetSwimActivitiesUseCase;
 import com.lapwise.lapwise_backend.domain.port.in.GetSwimActivityUseCase;
@@ -21,6 +28,7 @@ import com.lapwise.lapwise_backend.domain.port.in.command.GetSwimActivitiesComma
 import com.lapwise.lapwise_backend.domain.port.in.command.GetSwimActivityCommand;
 
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -45,7 +53,7 @@ public class SwimActivitiesController {
     @Operation(
         summary = "List synced swims",
         description = """
-            Reads Postgres for the JWT user. Newest first. \
+            Reads Postgres for the JWT user. Newest first. No splits, no insight. \
             Pass the previous page's nextCursor as cursor. Omit cursor on the first request. \
             limit defaults to 20, max 50.
             """
@@ -74,7 +82,9 @@ public class SwimActivitiesController {
     })
     public SwimActivityPageResponse listSwimActivities(
         @AuthenticationPrincipal Jwt jwt,
+        @Parameter(description = "Swim id of the last item on the previous page. Omit on the first request.")
         @RequestParam(required = false) UUID cursor,
+        @Parameter(description = "Page size. Defaults to 20, max 50.")
         @RequestParam(defaultValue = "20") int limit
     ) {
         int capped = Math.min(Math.max(limit, 1), 50);
@@ -93,13 +103,13 @@ public class SwimActivitiesController {
     @SecurityRequirement(name = "bearer-jwt")
     @Operation(
         summary = "Get one synced swim",
-        description = "Lapwise id from the list. 404 if missing or owned by another user. Splits and insight are not loaded yet."
+        description = "Lapwise id from the list. 404 if missing or owned by another user. Includes splits. insight is null when no ActivityInsight row exists (including before generation is wired)."
     )
     @ApiResponses({
         @ApiResponse(
             responseCode = "200",
             description = "Swim found",
-            content = @Content(schema = @Schema(implementation = SwimActivityResponse.class))
+            content = @Content(schema = @Schema(implementation = SwimActivityDetailResponse.class))
         ),
         @ApiResponse(
             responseCode = "401",
@@ -112,15 +122,16 @@ public class SwimActivitiesController {
             content = @Content(schema = @Schema(implementation = AuthErrorResponse.class))
         )
     })
-    public SwimActivityResponse getSwimActivityById(
+    public SwimActivityDetailResponse getSwimActivityById(
         @AuthenticationPrincipal Jwt jwt,
+        @Parameter(description = "Lapwise swim id from the list, not Strava's activity id")
         @PathVariable UUID id
     ) {
         UUID userId = UUID.fromString(jwt.getSubject());
-        SwimActivity activity = getSwimActivityUseCase
+        SwimActivityDetail detail = getSwimActivityUseCase
             .getSwimActivity(new GetSwimActivityCommand(id, userId))
             .orElseThrow(SwimActivityNotFoundException::new);
-        return toResponse(activity);
+        return toDetailResponse(detail);
     }
 
     private static SwimActivityResponse toResponse(SwimActivity activity) {
@@ -130,6 +141,30 @@ public class SwimActivitiesController {
             activity.durationSeconds(),
             activity.distanceMeters()
         );
+    }
+
+    private static SwimActivityDetailResponse toDetailResponse(SwimActivityDetail detail) {
+        SwimActivity activity = detail.activity();
+        List<Split> splits = activity.splits();
+        return new SwimActivityDetailResponse(
+            activity.id(),
+            activity.startedAt(),
+            activity.durationSeconds(),
+            activity.distanceMeters(),
+            splits == null ? List.of() : splits.stream().map(SwimActivitiesController::toSplitResponse).toList(),
+            toInsightResponse(detail.insight())
+        );
+    }
+
+    private static SplitResponse toSplitResponse(Split split) {
+        return new SplitResponse(split.distanceMeters(), split.durationSeconds());
+    }
+
+    private static ActivityInsightResponse toInsightResponse(ActivityInsight insight) {
+        if (insight == null) {
+            return null;
+        }
+        return new ActivityInsightResponse(insight.body(), insight.createdAt());
     }
 
 }

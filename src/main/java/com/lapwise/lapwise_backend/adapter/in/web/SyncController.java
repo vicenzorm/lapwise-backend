@@ -37,14 +37,16 @@ public class SyncController {
         summary = "Pull new swims from Strava",
         description = """
             JWT `sub` is the Lapwise user id. Refreshes Strava tokens if expired, \
-            lists athlete activities, persists new SwimActivity rows, updates lastSyncedAt. \
-            No insight. Empty body; do not send a user id in JSON.
+            lists athlete activities (newest first; import is oldest first), \
+            fetches Strava activity detail for laps, persists new SwimActivity rows, \
+            then updates lastSyncedAt, then backfills ActivityInsight for stored swims \
+            with usable splits and no insight row yet. Empty body; do not send a user id in JSON.
             """
     )
     @ApiResponses({
         @ApiResponse(
             responseCode = "200",
-            description = "Sync finished",
+            description = "Sync finished (imported / skipped counts). Missing splits still import the swim.",
             content = @Content(schema = @Schema(implementation = SyncResponse.class))
         ),
         @ApiResponse(
@@ -58,8 +60,18 @@ public class SyncController {
             content = @Content(schema = @Schema(implementation = AuthErrorResponse.class))
         ),
         @ApiResponse(
+            responseCode = "429",
+            description = "strava_rate_limited (list or activity detail). lastSyncedAt is not moved. insight_rate_limited if OpenRouter returns 429 during backfill (imported swims stay).",
+            content = @Content(schema = @Schema(implementation = AuthErrorResponse.class))
+        ),
+        @ApiResponse(
             responseCode = "502",
             description = "strava_unavailable",
+            content = @Content(schema = @Schema(implementation = AuthErrorResponse.class))
+        ),
+        @ApiResponse(
+            responseCode = "503",
+            description = "insight_unavailable — OpenRouter down or timeout during backfill",
             content = @Content(schema = @Schema(implementation = AuthErrorResponse.class))
         )
     })

@@ -2,7 +2,7 @@
 
 Tables live in `adapter.out.persistence`. Domain types in `domain.model` stay free of JPA.
 
-What follows is the table list and why it is this short. The column layout is at the bottom.
+Insight generation (phase 5): [`superpowers/specs/2026-08-30-activity-insight-design.md`](superpowers/specs/2026-08-30-activity-insight-design.md).
 
 ## What has to survive a restart
 
@@ -36,7 +36,7 @@ Email is nullable. Strava often does not give it. Unique when present so we do n
 
 One row per swim we imported.
 
-List and detail read this table, not Strava. Unique `(user_id, strava_activity_id)` so a second `/sync` does not insert duplicates. Duration, distance, start time, optional pool length, and the raw splits blob are enough to render a row and to feed the insight prompt.
+List and detail read this table, not Strava. Unique `(user_id, strava_activity_id)` so a second `/sync` does not insert duplicates. Duration, distance, start time, optional pool length, and the raw splits blob are enough to render a row. Domain fade math parses that blob into `Split` values. The OpenRouter prompt gets this swim’s splits plus a compact comparison snapshot, not other swims’ JSON.
 
 We do not store runs, rides, or other Strava types. The filter happens at sync time; the table only holds swims.
 
@@ -44,15 +44,15 @@ We do not store runs, rides, or other Strava types. The filter happens at sync t
 
 One row per SwimActivity that got an insight, unique on `activity_id`.
 
-This could have been a nullable column on `swim_activities`. It is a separate table because the lifecycle is different: the activity is saved in phase 3 with no insight; the text appears in phase 5; some activities never get one (no splits → 422, not a half-filled swim row). `created_at` is about the generation, not the swim.
+This could have been a nullable column on `swim_activities`. It is a separate table because the lifecycle is different: the activity is saved when Strava returns it; the text appears after OpenRouter succeeds; some activities never get one (fewer than three splits → no insight row, not a 422 on `/sync`). `created_at` is about the generation, not the swim. A later `/sync` backfills insights for stored swims that still lack a row.
 
 The join is 1:1. That is fine. The domain already named Insight as its own thing.
 
 ## Tables we do not have
 
-`splits`**.** Splits are prompt raw material and detail payload, not something we query (`slowest lap`, `splits where pace > X`). Normalizing them would be a table we never filter on. They stay `jsonb` on `swim_activities`, null when Strava omitted them.
+`splits`**.** Splits are prompt raw material, fade-math input, and detail payload, not something we query (`slowest lap`, `splits where pace > X`). Normalizing them would be a table we never filter on. They stay `jsonb` on `swim_activities`, null when Strava omitted them. Comparable swims are selected from `swim_activities` by distance, not from a splits table.
 
-`sync_runs` **/** `jobs`**.** Sync is a blocking `POST` for 1–3s. No queue, no SSE in the MVP. A run history would be infrastructure looking for a consumer.
+`sync_runs` **/** `jobs`**.** Sync is a blocking `POST`. Insight generation can make it slower than 1–3s; that is still not a queue. No SSE in the MVP. A run history would be infrastructure looking for a consumer.
 
 `sessions`**.** The iOS app will hold a Lapwise session token, not Strava's. Where that token lives (opaque row vs signed JWT) is the user story for issuing that token. It is not required to persist Users and swims. Add a table then if the token is opaque and must be revoked.
 

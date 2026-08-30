@@ -10,6 +10,7 @@ import org.springframework.web.client.RestClient;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.lapwise.lapwise_backend.domain.exception.StravaRateLimitedException;
+import com.lapwise.lapwise_backend.domain.model.Split;
 import com.lapwise.lapwise_backend.domain.model.StravaActivitySummary;
 import com.lapwise.lapwise_backend.domain.port.out.StravaActivityPort;
 
@@ -60,12 +61,55 @@ public class StravaActivityAdapter implements StravaActivityPort {
         .toList();
     }
 
+    @Override
+    public List<Split> getActivitySplits(String accessToken, Long stravaActivityId) {
+        ActivityDetailJson body = restClient.get()
+        .uri("/api/v3/activities/{id}", stravaActivityId)
+        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+        .retrieve()
+        .onStatus(
+            status -> status.value() == 429,
+            (request, response) -> {
+                throw new StravaRateLimitedException();
+            }
+        )
+        .body(ActivityDetailJson.class);
+
+        if (body == null || body.laps() == null || body.laps().isEmpty()) {
+            return List.of();
+        }
+        return body.laps().stream()
+            .map(StravaActivityAdapter::toSplit)
+            .toList();
+    }
+
+    private static Split toSplit(LapJson lap) {
+        double meters = lap.distance() == null ? 0.0 : lap.distance();
+        int seconds;
+        if (lap.movingTime() != null) {
+            seconds = lap.movingTime();
+        } else if (lap.elapsedTime() != null) {
+            seconds = lap.elapsedTime();
+        } else {
+            seconds = 0;
+        }
+        return new Split(meters, seconds);
+    }
+
     private record ActivityJson(
         Long id,
         String type,
         @JsonProperty("start_date") String startDate,
         @JsonProperty("elapsed_time") Integer elapsedTime,
         Double distance
+    ) {}
+
+    private record ActivityDetailJson(List<LapJson> laps) {}
+
+    private record LapJson(
+        Double distance,
+        @JsonProperty("moving_time") Integer movingTime,
+        @JsonProperty("elapsed_time") Integer elapsedTime
     ) {}
     
 }

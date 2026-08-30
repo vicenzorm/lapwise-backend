@@ -138,7 +138,7 @@ public class ActivityInsightEntity {
 }
 ```
 
-`unique = true` on the join column is “at most one insight per swim.”
+`unique = true` on the join column is “at most one insight per swim.” Missing usable splits means this row is absent, not a 422 on `/sync`.
 
 ## Repositories (Spring Data)
 

@@ -58,4 +58,12 @@ public class SwimActivityPersistenceAdapter implements SwimActivityRepositoryPor
     public Optional<SwimActivity> findSwimActivityByIdAndUserId(UUID id, UUID userId) {
         return swimActivityRepository.findByIdAndUser_Id(id, userId).map(SwimActivityMapper::toDomain);
     }
+
+    @Override
+    public List<SwimActivity> findByUserIdOrderByStartedAtAsc(UUID userId) {
+        return swimActivityRepository.findByUser_IdOrderByStartedAtAscIdAsc(userId)
+            .stream()
+            .map(SwimActivityMapper::toDomain)
+            .toList();
+    }
 }

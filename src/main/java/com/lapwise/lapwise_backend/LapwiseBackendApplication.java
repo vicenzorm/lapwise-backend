@@ -4,6 +4,8 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
 
+import com.lapwise.lapwise_backend.domain.port.out.ActivityInsightRepositoryPort;
+import com.lapwise.lapwise_backend.domain.port.out.InsightPort;
 import com.lapwise.lapwise_backend.domain.port.out.StravaActivityPort;
 import com.lapwise.lapwise_backend.domain.port.out.StravaAuthPort;
 import com.lapwise.lapwise_backend.domain.port.out.SwimActivityRepositoryPort;
@@ -31,9 +33,18 @@ public class LapwiseBackendApplication {
         UserRepositoryPort userRepositoryPort,
         StravaAuthPort stravaAuthPort, 
         StravaActivityPort stravaActivityPort, 
-        SwimActivityRepositoryPort swimActivityRepositoryPort
+        SwimActivityRepositoryPort swimActivityRepositoryPort,
+        ActivityInsightRepositoryPort activityInsightRepositoryPort,
+        InsightPort insightPort
     ) {
-		return new SwimActivityService(userRepositoryPort, stravaAuthPort, stravaActivityPort, swimActivityRepositoryPort);
+		return new SwimActivityService(
+            userRepositoryPort,
+            stravaAuthPort,
+            stravaActivityPort,
+            swimActivityRepositoryPort,
+            activityInsightRepositoryPort,
+            insightPort
+        );
 	}
 
 }

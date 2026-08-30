@@ -8,6 +8,8 @@ import org.springframework.web.client.RestClientException;
 
 import com.lapwise.lapwise_backend.adapter.in.dtos.AuthErrorResponse;
 import com.lapwise.lapwise_backend.domain.exception.IncompleteStravaTokenException;
+import com.lapwise.lapwise_backend.domain.exception.InsightRateLimitedException;
+import com.lapwise.lapwise_backend.domain.exception.InsightUnavailableException;
 import com.lapwise.lapwise_backend.domain.exception.InvalidSwimCursorException;
 import com.lapwise.lapwise_backend.domain.exception.StravaRateLimitedException;
 import com.lapwise.lapwise_backend.domain.exception.UserNotFoundException;
@@ -61,6 +63,18 @@ public class GlobalExceptionHandler {
     public ResponseEntity<AuthErrorResponse> stravaRateLimited(StravaRateLimitedException exception) {
         return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
             .body(new AuthErrorResponse("strava_rate_limited", exception.getMessage()));
+    }
+
+    @ExceptionHandler(InsightRateLimitedException.class)
+    public ResponseEntity<AuthErrorResponse> insightRateLimited(InsightRateLimitedException exception) {
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+            .body(new AuthErrorResponse("insight_rate_limited", exception.getMessage()));
+    }
+
+    @ExceptionHandler(InsightUnavailableException.class)
+    public ResponseEntity<AuthErrorResponse> insightUnavailable(InsightUnavailableException exception) {
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+            .body(new AuthErrorResponse("insight_unavailable", exception.getMessage()));
     }
 
     @ExceptionHandler(SwimActivityNotFoundException.class)

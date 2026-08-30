@@ -6,7 +6,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
     name = "ErrorResponse",
     description = """
         Stable `error` for the iOS client; `message` is safe to show. \
-        Never contains raw Strava JSON.
+        Never contains raw Strava or OpenRouter JSON.
         """
 )
 public record AuthErrorResponse(
@@ -24,12 +24,14 @@ public record AuthErrorResponse(
             "user_not_found",
             "swim_activity_not_found",
             "strava_rate_limited",
+            "insight_rate_limited",
+            "insight_unavailable",
             "unauthorized"
         }
     )
     String error,
     @Schema(
-        description = "Human-readable explanation. No upstream Strava body.",
+        description = "Human-readable explanation. No upstream Strava or OpenRouter body.",
         example = "OAuth state cookie did not match the state query parameter",
         requiredMode = Schema.RequiredMode.REQUIRED
     )
