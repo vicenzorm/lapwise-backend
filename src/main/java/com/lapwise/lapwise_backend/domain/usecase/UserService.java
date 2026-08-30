@@ -1,5 +1,6 @@
 package com.lapwise.lapwise_backend.domain.usecase;
 
+import java.time.Instant;
 import java.util.Optional;
 
 import com.lapwise.lapwise_backend.domain.model.StravaTokenSet;
@@ -52,4 +53,23 @@ public class UserService implements DeleteUserUseCase, CompleteStravaAuthUseCase
         );
         return userRepositoryPort.save(updatedUser);
     }
+
+    private User withFreshStravaTokens(User user) {
+        if(user.tokenExpiresAt().isAfter(Instant.now())) {
+            return user;
+        } else {
+            StravaTokenSet tokens = stravaAuthPort.refreshAccessToken(user.refreshToken());
+            User updatedUser = new User(
+                user.id(),
+                user.email(),
+                user.stravaAthleteId(),
+                tokens.accessToken(),
+                tokens.refreshToken(),
+                tokens.tokenExpiresAt(),
+                user.lastSyncedAt()
+            );
+            return userRepositoryPort.save(updatedUser);
+        }
+    }
+
 }

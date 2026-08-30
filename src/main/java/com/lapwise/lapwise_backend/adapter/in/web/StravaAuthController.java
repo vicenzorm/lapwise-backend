@@ -18,6 +18,7 @@ import com.lapwise.lapwise_backend.adapter.in.dtos.AuthCompletedResponse;
 import com.lapwise.lapwise_backend.adapter.in.exception.InvalidOAuthStateException;
 import com.lapwise.lapwise_backend.adapter.in.exception.MissingAuthorizationCodeException;
 import com.lapwise.lapwise_backend.adapter.in.exception.StravaConsentDeniedException;
+import com.lapwise.lapwise_backend.adapter.in.helpers.LapwiseSessionIssuer;
 import com.lapwise.lapwise_backend.domain.model.User;
 import com.lapwise.lapwise_backend.domain.port.in.CompleteStravaAuthUseCase;
 import com.lapwise.lapwise_backend.domain.port.in.command.CompleteStravaAuthCommand;
@@ -33,15 +34,18 @@ public class StravaAuthController {
     private final CompleteStravaAuthUseCase completeStravaAuthUseCase;
     private final String clientId;
     private final String redirectUri;
+    private final LapwiseSessionIssuer sessionIssuer;
 
     public StravaAuthController(
         CompleteStravaAuthUseCase completeStravaAuthUseCase,
         @Value("${lapwise.strava.client-id}") String clientId,
-        @Value("${lapwise.strava.redirect-uri}") String redirectUri
+        @Value("${lapwise.strava.redirect-uri}") String redirectUri,
+        LapwiseSessionIssuer sessionIssuer
     ) {
         this.completeStravaAuthUseCase = completeStravaAuthUseCase;
         this.clientId = clientId;
         this.redirectUri = redirectUri;
+        this.sessionIssuer = sessionIssuer;
     }
 
     @GetMapping("/auth/strava/authorize")
@@ -97,8 +101,9 @@ public class StravaAuthController {
         }
 
         User user = completeStravaAuthUseCase.complete(new CompleteStravaAuthCommand(code));
+        String session = sessionIssuer.issue(user.id());
         return ResponseEntity.ok()
             .header(HttpHeaders.SET_COOKIE, clearState.toString())
-            .body(new AuthCompletedResponse(user.id()));
+            .body(new AuthCompletedResponse(user.id(),session));
     }
 }

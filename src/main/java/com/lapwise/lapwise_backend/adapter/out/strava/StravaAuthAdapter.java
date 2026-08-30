@@ -58,6 +58,33 @@ public class StravaAuthAdapter implements StravaAuthPort {
         );
     }
 
+    @Override
+    public StravaTokenSet refreshAccessToken(String refreshToken) {
+        MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
+        form.add("client_id", clientId);
+        form.add("client_secret", clientSecret);
+        form.add("refresh_token", refreshToken);
+        form.add("grant_type", "refresh_token");
+
+        TokenResponse body = restClient.post()
+            .uri("/oauth/token")
+            .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+            .body(form)
+            .retrieve()
+            .body(TokenResponse.class);
+
+        if (body == null || body.athlete() == null || body.athlete().id() == null || body.expiresAt() == null) {
+            throw new IncompleteStravaTokenException();
+        }
+
+        return new StravaTokenSet(
+            body.athlete().id(),
+            body.accessToken(),
+            body.refreshToken(),
+            Instant.ofEpochSecond(body.expiresAt())
+        );
+    }
+
     private record TokenResponse(
         @JsonProperty("access_token") String accessToken,
         @JsonProperty("refresh_token") String refreshToken,

@@ -12,6 +12,8 @@ When pairing, change the file the human named.
 
 ## Architecture — hexagonal, strict
 
+The rules in this file win if they ever disagree with [`HOWITWORKS.md`](HOWITWORKS.md). That file is a long teaching note (Swift MVVM → hexagon + Spring). This file is what you follow when you add a type.
+
 Two sides only. **Inside** is the hexagon (`domain`): model, ports, use cases. **Outside** is adapters (`adapter.in`, `adapter.out`). Dependencies point inward only.
 
 There is no `application` package. That split (Hombergs / “Java hexagonal”) is not this repo. Ports and use cases stay in `domain`.

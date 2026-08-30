@@ -4,4 +4,5 @@ import com.lapwise.lapwise_backend.domain.model.StravaTokenSet;
 
 public interface StravaAuthPort {
     StravaTokenSet exchangeAuthorizationCode(String code);
+    StravaTokenSet refreshAccessToken(String refreshToken);
 }
