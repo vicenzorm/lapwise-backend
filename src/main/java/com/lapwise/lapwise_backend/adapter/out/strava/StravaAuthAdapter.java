@@ -85,6 +85,8 @@ public class StravaAuthAdapter implements StravaAuthPort {
         );
     }
 
+    
+
     private record TokenResponse(
         @JsonProperty("access_token") String accessToken,
         @JsonProperty("refresh_token") String refreshToken,

@@ -8,6 +8,9 @@ import org.springframework.web.client.RestClientException;
 
 import com.lapwise.lapwise_backend.adapter.in.dtos.AuthErrorResponse;
 import com.lapwise.lapwise_backend.domain.exception.IncompleteStravaTokenException;
+import com.lapwise.lapwise_backend.domain.exception.InvalidSwimCursorException;
+import com.lapwise.lapwise_backend.domain.exception.StravaRateLimitedException;
+import com.lapwise.lapwise_backend.domain.exception.UserNotFoundException;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -30,6 +33,18 @@ public class GlobalExceptionHandler {
             .body(new AuthErrorResponse("invalid_state", exception.getMessage()));
     }
 
+    @ExceptionHandler(InvalidSwimCursorException.class)
+    public ResponseEntity<AuthErrorResponse> invalidCursor(InvalidSwimCursorException exception) {
+        return ResponseEntity.badRequest()
+            .body(new AuthErrorResponse("invalid_cursor", exception.getMessage()));
+    }
+
+    @ExceptionHandler(UserNotFoundException.class)
+    public ResponseEntity<AuthErrorResponse> userNotFound(UserNotFoundException exception) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+            .body(new AuthErrorResponse("user_not_found", exception.getMessage()));
+    }
+
     @ExceptionHandler(IncompleteStravaTokenException.class)
     public ResponseEntity<AuthErrorResponse> incompleteStrava(IncompleteStravaTokenException exception) {
         return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
@@ -40,5 +55,17 @@ public class GlobalExceptionHandler {
     public ResponseEntity<AuthErrorResponse> stravaHttp(RestClientException exception) {
         return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
             .body(new AuthErrorResponse("strava_unavailable", "Strava could not complete the request"));
+    }
+
+    @ExceptionHandler(StravaRateLimitedException.class)
+    public ResponseEntity<AuthErrorResponse> stravaRateLimited(StravaRateLimitedException exception) {
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+            .body(new AuthErrorResponse("strava_rate_limited", exception.getMessage()));
+    }
+
+    @ExceptionHandler(SwimActivityNotFoundException.class)
+    public ResponseEntity<AuthErrorResponse> swimActivityNotFound(SwimActivityNotFoundException exception) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+            .body(new AuthErrorResponse("swim_activity_not_found", exception.getMessage()));
     }
 }

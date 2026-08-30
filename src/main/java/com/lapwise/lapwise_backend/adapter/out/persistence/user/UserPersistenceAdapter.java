@@ -1,4 +1,4 @@
-package com.lapwise.lapwise_backend.adapter.out.persistence;
+package com.lapwise.lapwise_backend.adapter.out.persistence.user;
 
 import java.util.Optional;
 import java.util.UUID;

@@ -81,8 +81,8 @@ Strava access/refresh is a server problem. The iOS app holds a session token for
 
 ### Query
 
-- `GET /activities?cursor=&limit=` — cursor pagination
-- `GET /activities/{id}` — detail with splits and insight
+- `GET /swim-activities?cursor=&limit=` — cursor pagination
+- `GET /swim-activities/{id}` — detail with splits and insight
 
 ### Errors the client is built to handle
 

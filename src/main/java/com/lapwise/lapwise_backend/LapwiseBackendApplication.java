@@ -4,8 +4,11 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
 
+import com.lapwise.lapwise_backend.domain.port.out.StravaActivityPort;
 import com.lapwise.lapwise_backend.domain.port.out.StravaAuthPort;
+import com.lapwise.lapwise_backend.domain.port.out.SwimActivityRepositoryPort;
 import com.lapwise.lapwise_backend.domain.port.out.UserRepositoryPort;
+import com.lapwise.lapwise_backend.domain.usecase.SwimActivityService;
 import com.lapwise.lapwise_backend.domain.usecase.UserService;
 
 /**
@@ -21,6 +24,16 @@ public class LapwiseBackendApplication {
 	@Bean
 	UserService userService(UserRepositoryPort userRepositoryPort, StravaAuthPort stravaAuthPort) {
 		return new UserService(userRepositoryPort, stravaAuthPort);
+	}
+
+	@Bean
+	SwimActivityService swimActivityService(
+        UserRepositoryPort userRepositoryPort,
+        StravaAuthPort stravaAuthPort, 
+        StravaActivityPort stravaActivityPort, 
+        SwimActivityRepositoryPort swimActivityRepositoryPort
+    ) {
+		return new SwimActivityService(userRepositoryPort, stravaAuthPort, stravaActivityPort, swimActivityRepositoryPort);
 	}
 
 }
