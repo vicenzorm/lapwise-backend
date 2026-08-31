@@ -1,5 +1,6 @@
 package com.lapwise.lapwise_backend.adapter.in.web;
 
+import java.net.URI;
 import java.time.Duration;
 import java.util.UUID;
 
@@ -127,7 +128,7 @@ public class StravaAuthController {
     )
     @ApiResponses({
         @ApiResponse(
-            responseCode = "200",
+            responseCode = "302",
             description = "User upserted; session JWT issued. State cookie cleared.",
             content = @Content(schema = @Schema(implementation = AuthCompletedResponse.class)),
             headers = @Header(
@@ -180,8 +181,17 @@ public class StravaAuthController {
 
         User user = completeStravaAuthUseCase.complete(new CompleteStravaAuthCommand(code));
         String session = sessionIssuer.issue(user.id());
-        return ResponseEntity.ok()
+        URI appCallback = UriComponentsBuilder
+            .fromUriString("lapwise://auth/callback")
+            .queryParam("sessionToken", session)
+            .queryParam("userId", user.id())
+            .encode()
+            .build()
+            .toUri();
+
+        return ResponseEntity.status(HttpStatus.FOUND)
             .header(HttpHeaders.SET_COOKIE, clearState.toString())
-            .body(new AuthCompletedResponse(user.id(), session));
-    }
+            .location(appCallback)
+            .build();
+        }
 }

@@ -2,7 +2,7 @@
 
 Spring Boot API for the Lapwise iOS app: Strava OAuth, on-demand swim sync, optional AI insight on each new swim.
 
-This repo is the API only. The iOS client lives in the sibling repo `lapwise-frontend/`.
+This repo is the API only. The iOS client is [lapwise-frontend](https://github.com/vicenzorm/lapwise-frontend).
 
 The API is not meant to sit on the public internet. Run it on your Mac. Use the Simulator with `localhost`, or a physical iPhone over Tailscale (private network, not Funnel).
 
@@ -106,11 +106,50 @@ If that fails, Tailscale is often idle on iOS — open the Tailscale app and con
 
 Mac sleep stops the API. Postgres data stays on disk.
 
-### iOS app on the device
+### iOS app from Xcode (physical iPhone)
 
-Point the client’s base URL at the Serve HTTPS origin (no `:8080`). Simulator keeps `http://127.0.0.1:8080`.
+Two separate pipes. Mixing them up is why this feels confusing.
 
-For Strava login **from the phone**, `STRAVA_REDIRECT_URI` and the Strava app settings must use the same host the phone can load, e.g. `https://your-mac.tailxxxx.ts.net/auth/strava/callback`. Strava only redirects the browser; the phone, already on Tailscale, fetches that callback. You can keep the localhost URI for Simulator/Mac.
+| Pipe | What it is for |
+|---|---|
+| **USB (or Xcode wireless debugging)** | Xcode installs the `.app` on the phone and attaches the debugger. The phone does **not** talk to Spring this way. |
+| **Tailscale** | `URLSession` / `ASWebAuthenticationSession` in the app reach Spring at `https://your-mac.tailxxxx.ts.net`. |
+
+The iOS project is [lapwise-frontend](https://github.com/vicenzorm/lapwise-frontend). Xcode, signing, Simulator vs device, and where `baseURL` lives are in that README. `LiveAPIClient` should use one base URL: Serve HTTPS on a real device, `http://127.0.0.1:8080` in the Simulator.
+
+```swift
+#if targetEnvironment(simulator)
+let baseURL = URL(string: "http://127.0.0.1:8080")!
+#else
+let baseURL = URL(string: "https://your-mac.tailxxxx.ts.net")! // copy from `tailscale serve status`
+#endif
+```
+
+No port on the HTTPS URL (Serve listens on 443). Paths stay `/sync`, `/swim-activities`, and so on. Do not use `localhost` in the device build.
+
+**Before Xcode**
+
+1. Postgres up, `./mvnw spring-boot:run` on the Mac.
+2. `tailscale serve --bg 8080` and confirm `tailscale serve status`.
+3. Tailscale **on** on the Mac and the iPhone (VPN toggle + Use Tailscale DNS).
+4. On the phone, Safari: `https://<serve-host>/swagger-ui.html` must load. If Safari cannot see Swagger, the app will not either — fix Tailscale first.
+
+**Xcode**
+
+1. Cable the iPhone to the Mac (or set up wireless debugging after pairing once). Unlock the phone; Trust This Computer if asked.
+2. On the iPhone: **Settings → Privacy & Security → Developer Mode** on (iOS 16+), then reboot if it asks.
+3. Open `lapwise-frontend` in Xcode. Top of the window: set the run destination to **your iPhone**, not a Simulator.
+4. **Signing & Capabilities**: pick your Team (Personal Team is enough for your own phone). Bundle id must be unique if Apple rejects the default.
+5. Paste the Serve origin into the device `baseURL` (the `tailxxxx.ts.net` host from `tailscale serve status`). Rebuild if you change it.
+6. Run (⌘R). First time, the phone may say Untrusted Developer: **Settings → General → VPN & Device Management** → trust your Apple ID, then Run again.
+
+Keep the Tailscale app connected **while Lapwise is in the foreground**. iOS may idle the VPN; if requests fail, open Tailscale, confirm the switch is on, retry. You do not start Tailscale from Xcode — it is just another app on the phone.
+
+Serve HTTPS means App Transport Security is satisfied. If you point the app at `http://100.x.x.x:8080` instead, iOS will block cleartext unless you add an ATS exception — prefer Serve.
+
+**Simulator in Xcode:** destination = iPhone Simulator, `baseURL` = `http://127.0.0.1:8080`, Tailscale not required.
+
+For Strava login **from the phone**, `STRAVA_REDIRECT_URI` and the Strava app settings must use the same host the phone can load, e.g. `https://your-mac.tailxxxx.ts.net/auth/strava/callback`. Strava only redirects the browser; the phone, already on Tailscale, fetches that callback. Keep the localhost URI for Simulator/Mac.
 
 ## 5. Stop
 
