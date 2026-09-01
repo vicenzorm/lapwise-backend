@@ -37,6 +37,18 @@ class SplitAnalyticsTest {
     }
 
     @Test
+    void restLapsDoNotChangeFadeOfThreeHundreds() {
+        List<Split> splits = List.of(
+            new Split(0, 16),
+            new Split(100, 80),
+            new Split(100, 90),
+            new Split(0, 30),
+            new Split(100, 100)
+        );
+        assertEquals(0.25, SplitAnalytics.fadePercent(splits), 1e-9);
+    }
+
+    @Test
     void selectComparables_keepsPlusMinusTwentyPercentNewestFive() {
         UUID userId = UUID.randomUUID();
         SwimActivity thisSwim = swim(UUID.randomUUID(), userId, 2000, Instant.parse("2024-06-10T12:00:00Z"));

@@ -30,12 +30,22 @@ Edit `.env`. Do not commit it.
 | `STRAVA_CLIENT_ID` / `STRAVA_CLIENT_SECRET` | From the Strava API application |
 | `STRAVA_REDIRECT_URI` | `http://localhost:8080/auth/strava/callback` for Mac/Simulator. Add the Tailscale HTTPS callback later for a physical phone (see below). |
 | `SESSION_SECRET` | At least 32 random bytes. Example: `openssl rand -base64 32`. This signs the Lapwise JWT, not the Strava token. |
-| `OPENROUTER_API_KEY` | OpenRouter key, or leave blank if you are not generating insights yet |
-| `OPENROUTER_MODEL` | Defaults in `.env.example` are fine |
+| `OPENROUTER_API_KEY` | OpenRouter key, or leave blank if you are not generating insights yet (backfill then returns `503` `insight_unavailable`) |
+| `OPENROUTER_MODEL` | `google/gemini-2.5-flash-lite` (same as `.env.example`). See **Insight model** below. |
 
 In the Strava app settings, the **Authorization Callback Domain** / redirect URL must include whatever you put in `STRAVA_REDIRECT_URI` (localhost for the Mac, and the `*.ts.net` host if you log in from the phone).
 
 Spring loads `.env` from the process working directory (or one level up) on boot. Restart the API after you change it.
+
+### Insight model
+
+`POST /sync` calls OpenRouter once per swim that has usable splits (at least three paced laps) and no insight row yet. That includes swims you already imported. `imported=0 skipped=0` still runs backfill.
+
+Default is [`google/gemini-2.5-flash-lite`](https://openrouter.ai/google/gemini-2.5-flash-lite): cheap, and thinking is off unless you turn it on. `OpenRouterInsightAdapter` always sends `reasoning: { "effort": "none", "exclude": true }` and stores only `choices[0].message.content`, never the chain-of-thought.
+
+`deepseek/deepseek-v4-flash-0731` is cheaper per token. It thinks by default. Even with reasoning off it can sit past `spring.http.clients.read-timeout` (45s), which the API maps to `503 insight_unavailable`. Use Gemini unless you have a reason not to.
+
+The iOS **Sincronizar** button waits on this POST. One OpenRouter call can take tens of seconds. The list does not gain a new row if Strava had nothing new. Open the swim: the paragraph is on detail.
 
 ## 2. Postgres
 
@@ -46,6 +56,12 @@ docker compose up -d
 ```
 
 That starts Postgres 17 on `localhost:5432`, database `lapwise`. Hibernate (`ddl-auto=update`) creates tables on first API boot. Stopping the API does **not** wipe data. `docker compose down -v` does.
+
+`activity_insights.body` is `TEXT`. `ddl-auto=update` does not widen an existing `varchar(255)`. If that table was created before the TEXT mapping, run this once, then restart the API:
+
+```sql
+ALTER TABLE activity_insights ALTER COLUMN body TYPE TEXT;
+```
 
 If something else already owns port 5432, stop it or this container will fail to bind.
 
@@ -60,13 +76,13 @@ Wait until the log says the app started. Then on **this Mac**:
 - Swagger: [http://localhost:8080/swagger-ui.html](http://localhost:8080/swagger-ui.html)
 - OpenAPI JSON: [http://localhost:8080/v3/api-docs](http://localhost:8080/v3/api-docs)
 
-`localhost` means this computer. That is what the iOS **Simulator** should call (`http://127.0.0.1:8080`). A physical iPhone’s `localhost` is the phone, not the Mac — use Tailscale for that.
+`localhost` means this computer. That is what the iOS **Simulator** should call (`http://localhost:8080`). A physical iPhone’s `localhost` is the phone, not the Mac — use Tailscale for that.
 
 ### Login in the browser (Mac)
 
 Do **not** use Swagger Try it out on `GET /auth/strava/authorize`. Open that URL in a real browser so the redirect and the `lapwise_oauth_state` cookie work. After Strava consent you land on `/auth/strava/callback` and get JSON with `sessionToken`. In Swagger: **Authorize** → paste that token (not a Strava access token) → call `POST /sync` and the swim routes.
 
-`POST /sync` is blocking. Several new swims each hit Strava detail and OpenRouter; the request can take much longer than a couple of seconds.
+`POST /sync` is blocking. New swims hit Strava detail, then OpenRouter for each swim that still needs an insight. That can take tens of seconds. Already-synced swims skip Strava import and still backfill missing insights.
 
 ## 4. Physical iPhone (Tailscale)
 
@@ -115,15 +131,17 @@ Two separate pipes. Mixing them up is why this feels confusing.
 | **USB (or Xcode wireless debugging)** | Xcode installs the `.app` on the phone and attaches the debugger. The phone does **not** talk to Spring this way. |
 | **Tailscale** | `URLSession` / `ASWebAuthenticationSession` in the app reach Spring at `https://your-mac.tailxxxx.ts.net`. |
 
-The iOS project is [lapwise-frontend](https://github.com/vicenzorm/lapwise-frontend). Xcode, signing, Simulator vs device, and where `baseURL` lives are in that README. `LiveAPIClient` should use one base URL: Serve HTTPS on a real device, `http://127.0.0.1:8080` in the Simulator.
+The iOS project is [lapwise-frontend](https://github.com/vicenzorm/lapwise-frontend). Xcode, signing, Simulator vs device, and where `baseURL` lives are in that README. `LiveAPIClient` uses one origin: Serve HTTPS on a real device (`API_BASE_URL`), `http://localhost:8080` in the Simulator.
 
 ```swift
 #if targetEnvironment(simulator)
-let baseURL = URL(string: "http://127.0.0.1:8080")!
+let baseURL = URL(string: "http://localhost:8080")!
 #else
-let baseURL = URL(string: "https://your-mac.tailxxxx.ts.net")! // copy from `tailscale serve status`
+let baseURL = URL(string: ProcessInfo.processInfo.environment["API_BASE_URL"])!
 #endif
 ```
+
+That split lives in `AppDependencies.live`. Simulator uses `localhost`. Device builds need `API_BASE_URL` set to the Serve origin from `tailscale serve status` (HTTPS, no port).
 
 No port on the HTTPS URL (Serve listens on 443). Paths stay `/sync`, `/swim-activities`, and so on. Do not use `localhost` in the device build.
 
@@ -140,14 +158,14 @@ No port on the HTTPS URL (Serve listens on 443). Paths stay `/sync`, `/swim-acti
 2. On the iPhone: **Settings → Privacy & Security → Developer Mode** on (iOS 16+), then reboot if it asks.
 3. Open `lapwise-frontend` in Xcode. Top of the window: set the run destination to **your iPhone**, not a Simulator.
 4. **Signing & Capabilities**: pick your Team (Personal Team is enough for your own phone). Bundle id must be unique if Apple rejects the default.
-5. Paste the Serve origin into the device `baseURL` (the `tailxxxx.ts.net` host from `tailscale serve status`). Rebuild if you change it.
+5. Set `API_BASE_URL` in the Xcode scheme to the Serve origin (`https://your-mac.tailxxxx.ts.net` from `tailscale serve status`, no port). Rebuild if you change it.
 6. Run (⌘R). First time, the phone may say Untrusted Developer: **Settings → General → VPN & Device Management** → trust your Apple ID, then Run again.
 
 Keep the Tailscale app connected **while Lapwise is in the foreground**. iOS may idle the VPN; if requests fail, open Tailscale, confirm the switch is on, retry. You do not start Tailscale from Xcode — it is just another app on the phone.
 
 Serve HTTPS means App Transport Security is satisfied. If you point the app at `http://100.x.x.x:8080` instead, iOS will block cleartext unless you add an ATS exception — prefer Serve.
 
-**Simulator in Xcode:** destination = iPhone Simulator, `baseURL` = `http://127.0.0.1:8080`, Tailscale not required.
+**Simulator in Xcode:** destination = iPhone Simulator, `baseURL` = `http://localhost:8080`, Tailscale not required.
 
 For Strava login **from the phone**, `STRAVA_REDIRECT_URI` and the Strava app settings must use the same host the phone can load, e.g. `https://your-mac.tailxxxx.ts.net/auth/strava/callback`. Strava only redirects the browser; the phone, already on Tailscale, fetches that callback. Keep the localhost URI for Simulator/Mac.
 

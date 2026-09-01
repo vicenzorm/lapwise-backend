@@ -35,7 +35,7 @@ public class ActivityInsightEntity {
 	@JoinColumn(name = "activity_id", nullable = false, unique = true)
 	private SwimActivityEntity activity;
 
-	@Column(nullable = false)
+	@Column(nullable = false, columnDefinition = "TEXT")
 	private String body;
 
 	@Column(name = "created_at", nullable = false)

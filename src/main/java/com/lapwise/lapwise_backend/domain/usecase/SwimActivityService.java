@@ -152,8 +152,9 @@ public class SwimActivityService implements SyncActivitiesUseCase, GetSwimActivi
                     }
                     comparables.add(SplitAnalytics.toComparable(candidate, candidate.splits()));
                 }
-                ComparisonSnapshot snapshot = SplitAnalytics.snapshot(swim, swim.splits(), comparables);
-                String body = insightPort.generate(snapshot, swim.splits());
+                List<Split> paced = SplitAnalytics.pacedSplits(swim.splits());
+                ComparisonSnapshot snapshot = SplitAnalytics.snapshot(swim, paced, comparables);
+                String body = insightPort.generate(snapshot, paced);
                 if (body != null && !body.isBlank()) {
                     activityInsightRepositoryPort.save(ActivityInsight.createNew(swim.id(), body));
                 }

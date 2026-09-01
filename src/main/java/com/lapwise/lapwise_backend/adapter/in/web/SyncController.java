@@ -2,6 +2,9 @@ package com.lapwise.lapwise_backend.adapter.in.web;
 
 import java.util.UUID;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -24,6 +27,8 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 @RestController
 @Tag(name = "Sync")
 public class SyncController {
+
+    private static final Logger log = LoggerFactory.getLogger(SyncController.class);
 
     private final SyncActivitiesUseCase syncActivitiesUseCase;
 
@@ -77,7 +82,9 @@ public class SyncController {
     })
     public SyncResponse sync(@AuthenticationPrincipal Jwt jwt) {
         UUID userId = UUID.fromString(jwt.getSubject());
+        log.info("POST /sync started userId={}", userId);
         SyncResult syncResult = syncActivitiesUseCase.sync(new SyncActivitiesCommand(userId));
+        log.info("POST /sync finished imported={} skipped={}", syncResult.imported(), syncResult.skipped());
         return new SyncResponse(syncResult.imported(), syncResult.skipped());
     }
 }

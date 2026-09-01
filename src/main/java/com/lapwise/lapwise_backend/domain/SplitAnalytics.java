@@ -11,31 +11,22 @@ import com.lapwise.lapwise_backend.domain.model.SwimActivity;
 public final class SplitAnalytics {
     
     public static boolean isUsable(List<Split> splits) {
-        if (splits == null || splits.size() < 3) {
-            return false;
-        }
-        for (Split split : splits) {
-            if (split.distanceMeters() <= 0 || split.durationSeconds() <= 0) {
-                return false;
-            }
-        }
-        return true;
-    
+        return pacedSplits(splits).size() >= 3;
     }
 
     public static double fadePercent(List<Split> splits) {
-        if (!isUsable(splits)) {
+        List<Split> paced = pacedSplits(splits);
+        if (paced.size() < 3) {
             throw new IllegalArgumentException("splits are not usable");
         }
-
-        int n = splits.size();
+        int n = paced.size();
         int base = n / 3;      
         int rem = n % 3;       
         int firstSize  = base + (rem > 0 ? 1 : 0);  
         int middleSize = base + (rem > 1 ? 1 : 0);  
 
-        List<Split> first = splits.subList(0, firstSize);
-        List<Split> last  = splits.subList(firstSize + middleSize, n);
+        List<Split> first = paced.subList(0, firstSize);
+        List<Split> last  = paced.subList(firstSize + middleSize, n);
 
         double firstPace = avgPacePer100m(first);
         double lastPace  = avgPacePer100m(last);
@@ -70,10 +61,11 @@ public final class SplitAnalytics {
     }
 
     public static ComparableSwim toComparable(SwimActivity activity, List<Split> splits) {
+        List<Split> paced = pacedSplits(splits);
         return new ComparableSwim(
             activity.startedAt(),
             activity.distanceMeters(),
-            avgPacePer100m(splits), 
+            avgPacePer100m(paced), 
             fadePercent(splits)
         );
     }
@@ -83,13 +75,27 @@ public final class SplitAnalytics {
         List<Split> thisSplits,
         List<ComparableSwim> comparables
     ) {
+        List<Split> paced = pacedSplits(thisSplits);
         return new ComparisonSnapshot(
             thisSwim.distanceMeters(),
             thisSwim.durationSeconds(),
-            avgPacePer100m(thisSplits),
+            avgPacePer100m(paced),
             fadePercent(thisSplits),
             comparables
         );
+    }
+
+    public static List<Split> pacedSplits(List<Split> splits) {
+        if (splits == null) {
+            return List.of();
+        }
+        List<Split> paced = new ArrayList<>();
+        for (Split split : splits) {
+            if (split.distanceMeters() > 0 && split.durationSeconds() > 0) {
+                paced.add(split);
+            }
+        }
+        return paced;
     }
 
     private static double avgPacePer100m(List<Split> group) {

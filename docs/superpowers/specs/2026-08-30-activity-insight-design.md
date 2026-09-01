@@ -62,7 +62,7 @@ Split the ordered splits into three contiguous groups as evenly as possible. Fad
 
 ## Prompt
 
-One chat completion per insight. Cheap OpenRouter model, id in config (not hardcoded in domain). Low temperature, small max tokens.
+One chat completion per insight. Model id is `OPENROUTER_MODEL` (not hardcoded in domain). Default in `.env.example` is `google/gemini-2.5-flash-lite`: cheap, thinking off unless you enable it. The adapter always sends `reasoning.effort=none` and `exclude=true`, and maps only `choices[0].message.content`. Low temperature, small max tokens.
 
 System: short observation of this swim vs the snapshot numbers; at most one cautious note; no invented peers; no injury or training-plan.
 

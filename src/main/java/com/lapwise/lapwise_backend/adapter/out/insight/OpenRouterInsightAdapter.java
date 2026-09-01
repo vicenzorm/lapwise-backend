@@ -56,6 +56,7 @@ public class OpenRouterInsightAdapter implements InsightPort {
             this.model,
             0.3,
             600,
+            new Reasoning("none", true),
             List.of(
                 new ChatMessage("system", SYSTEM_PROMPT),
                 new ChatMessage("user", userMessage(snapshot, thisSwimSplits))
@@ -132,8 +133,11 @@ public class OpenRouterInsightAdapter implements InsightPort {
         String model,
         double temperature,
         @JsonProperty("max_tokens") int maxTokens,
+        Reasoning reasoning,
         List<ChatMessage> messages
     ) {}
+
+    private record Reasoning(String effort, boolean exclude) {}
 
     private record ChatMessage(String role, String content) {}
 

@@ -130,7 +130,7 @@ public class ActivityInsightEntity {
 	@JoinColumn(name = "activity_id", nullable = false, unique = true)
 	private SwimActivityEntity activity;
 
-	@Column(nullable = false)
+	@Column(nullable = false, columnDefinition = "TEXT")
 	private String body;
 
 	@Column(name = "created_at", nullable = false)
@@ -138,7 +138,7 @@ public class ActivityInsightEntity {
 }
 ```
 
-`unique = true` on the join column is “at most one insight per swim.” Missing usable splits means this row is absent, not a 422 on `/sync`.
+`unique = true` on the join column is “at most one insight per swim.” Missing usable splits means this row is absent, not a 422 on `/sync`. `columnDefinition = "TEXT"` so the paragraph is not `varchar(255)`. `ddl-auto=update` will not widen an existing `varchar` column; `ALTER TABLE activity_insights ALTER COLUMN body TYPE TEXT` if that table already exists.
 
 ## Repositories (Spring Data)
 

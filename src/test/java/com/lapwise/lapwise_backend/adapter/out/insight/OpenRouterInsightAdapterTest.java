@@ -12,6 +12,7 @@ import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.client.MockRestServiceServer;
+import static org.springframework.test.web.client.match.MockRestRequestMatchers.content;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.header;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
@@ -44,6 +45,24 @@ class OpenRouterInsightAdapterTest {
             .andExpect(header(HttpHeaders.AUTHORIZATION, "Bearer test-key"))
             .andRespond(withSuccess(
                 "{\"choices\":[{\"message\":{\"content\":\"Fade held vs your last 2k.\"}}]}",
+                MediaType.APPLICATION_JSON
+            ));
+
+        String body = adapter.generate(snapshot(), usableSplits());
+
+        assertEquals("Fade held vs your last 2k.", body);
+        server.verify();
+    }
+
+    @Test
+    void generate_disablesReasoningAndKeepsContent() {
+        server.expect(requestTo("https://openrouter.ai/api/v1/chat/completions"))
+            .andExpect(method(HttpMethod.POST))
+            .andExpect(content().json("{\"reasoning\":{\"effort\":\"none\",\"exclude\":true}}"))
+            .andRespond(withSuccess(
+                """
+                {"choices":[{"message":{"role":"assistant","content":"Fade held vs your last 2k.","reasoning":"thinking...","reasoning_details":[{"type":"reasoning.text","text":"thinking..."}]}}]}
+                """,
                 MediaType.APPLICATION_JSON
             ));
 
